@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  buildConfiguration: 'Release'
+  outputDir: '$(Build.ArtifactStagingDirectory)/partial'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  jobs:
+  - job: PartialBuild
+    steps:
+    - task: Checkout@1
+
+    - script: |
+        echo "Detecting changes..."
+        git fetch origin main
+        CHANGED_FILES=$(git diff --name-only HEAD HEAD~1)
+        echo "Changed files: $CHANGED_FILES"
+        echo "$CHANGED_FILES" > changed_files.txt
+      displayName: 'Detect Changed Files'
+
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: |
+          mkdir -p $(outputDir)
+          while read file; do
+            if [[ "$file" == *.dll || "$file" == *.exe ]]; then
+              echo "Copying $file to output"
+              cp -v $file $(outputDir) || true
+            fi
+          done < changed_files.txt
+      displayName: 'Copy Only Changed Artifacts'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(outputDir)'
+        ArtifactName: 'partial-artifacts'
+        publishLocation: 'Container'
