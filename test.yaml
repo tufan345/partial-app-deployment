@@ -15,12 +15,24 @@ stages:
   jobs:
   - job: PartialBuild
     steps:
-    - task: Checkout@1
+    - checkout: self
+
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: '7.0.x'  
 
     - script: |
-        echo "Detecting changes..."
+        echo "Restoring..."
+        dotnet restore
+        echo "Building..."
+        dotnet build --configuration $(buildConfiguration) --no-restore
+      displayName: 'Dotnet Restore & Build'
+
+    - script: |
+        echo "Detecting changed files..."
         git fetch origin main
-        CHANGED_FILES=$(git diff --name-only HEAD HEAD~1)
+        CHANGED_FILES=$(git diff --name-only origin/main HEAD)
         echo "Changed files: $CHANGED_FILES"
         echo "$CHANGED_FILES" > changed_files.txt
       displayName: 'Detect Changed Files'
@@ -29,11 +41,14 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          mkdir -p $(outputDir)
+          mkdir -p "$(outputDir)"
           while read file; do
             if [[ "$file" == *.dll || "$file" == *.exe ]]; then
-              echo "Copying $file to output"
-              cp -v $file $(outputDir) || true
+              found=$(find . -type f -name "$(basename "$file")")
+              for f in $found; do
+                echo "Copying $f to $(outputDir)"
+                cp --parents "$f" "$(outputDir)" || true
+              done
             fi
           done < changed_files.txt
       displayName: 'Copy Only Changed Artifacts'
